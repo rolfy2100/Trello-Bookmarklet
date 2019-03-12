@@ -72,9 +72,11 @@
         jiraApi.getIssue($("#key-val").prop('rel')).success(function (response) {
           if (esIssueValido(response)) {
             card.description = armarDescripcionParaJira(response);
+            card.urlSource = response.self;
             crearCardEnTrello(idList, card);
           } else {
             alert("No se puede agregar, ya que el issue esta cerrado");
+            recargarPagina();
           }
         })
       } else {
@@ -243,6 +245,7 @@
       setTimeout(function () {
         $cardLinkBox.fadeOut(3000);
       }, 5000)
+      recargarPagina();
     })
   }
 
@@ -366,6 +369,9 @@
     return $div;
   };
 
+  function recargarPagina() {
+    window.location = window.location.href;
+  }
   // Run several asyncronous functions in order
   var waterfall = function (fxs) {
     var runNext = function () {
