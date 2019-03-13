@@ -1,28 +1,28 @@
 {
-   "background": {
-      "persistent": false,
-      "scripts": ["background.js"]
-   },
-   "browser_action": {
-      "default_icon": {
-         "19": "imagenes/icon19.png",
-         "38": "imagenes/icon48.png"
-      },
-      "default_title": "Send to Trello"
-   },
-   "content_security_policy": "script-src 'self' 'unsafe-eval' https://trello.com; object-src 'self'",
-   "description": "Create Trello cards from other webpages (especially for: Gmail, FogBugz, JIRA, Redmine, Assembla, Salesforce, RequestTracker)",
-   "icons": {
-      "128": "imagenes/icon128.png",
-      "16": "imagenes/icon16.png",
-      "32": "imagenes/icon32.png",
-      "48": "imagenes/icon48.png"
-   },
-   "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCgLS4M+V5OM2qqx9vJrn6jIfvaL/KattaXkV6d2QdH85q9iA/l2A3XY3W37B4JZ/koIVHMybL7DcOXMlIxazFe3YDJHnnf0quzwRZ0c1wSOq0EZM5GOA0OVzkvVlznQYLTHP3NV2VU5zg40RuVXE1jnKgDcxcbpgxpNQjdLSWLsQIDAQAB",
-   "manifest_version": 2,
-   "name": "Jira to Trello",
-   "permissions": ["activeTab"],
-   "update_url": "https://clients2.google.com/service/update2/crx",
-   "version": "1.1",
-   "web_accessible_resources": ["jquery.min.js", "jquery.cookie.js", "trello_bookmarklet.js"]
+    "background": {
+        "persistent": false,
+        "scripts": ["background.js"]
+    },
+    "browser_action": {
+        "default_icon": {
+            "19": "imagenes/icon19.png",
+            "38": "imagenes/icon48.png"
+        },
+        "default_title": "Send to Trello"
+    },
+    "content_security_policy": "script-src 'self' 'unsafe-eval' https://trello.com; object-src 'self'",
+    "description": "Create Trello cards from other webpages (especially for: Gmail, FogBugz, JIRA, Redmine, Assembla, Salesforce, RequestTracker)",
+    "icons": {
+        "128": "imagenes/icon128.png",
+        "16": "imagenes/icon16.png",
+        "32": "imagenes/icon32.png",
+        "48": "imagenes/icon48.png"
+    },
+    "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCgLS4M+V5OM2qqx9vJrn6jIfvaL/KattaXkV6d2QdH85q9iA/l2A3XY3W37B4JZ/koIVHMybL7DcOXMlIxazFe3YDJHnnf0quzwRZ0c1wSOq0EZM5GOA0OVzkvVlznQYLTHP3NV2VU5zg40RuVXE1jnKgDcxcbpgxpNQjdLSWLsQIDAQAB",
+    "manifest_version": 2,
+    "name": "Jira to Trello",
+    "permissions": ["activeTab"],
+    "update_url": "https://clients2.google.com/service/update2/crx",
+    "version": "1.1",
+    "web_accessible_resources": ["jquery.min.js", "jquery.cookie.js", "jiraService.js", "trello_bookmarklet.js"]
 }

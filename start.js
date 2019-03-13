@@ -1,10 +1,14 @@
 (function (bodyPaginaActual) {
+
+
     if (paginaSinJquery(bodyPaginaActual)) {
         crearScript(bodyPaginaActual, "jquery.min.js", 'send_to_trello_local_jquery');
     }
     crearScript(bodyPaginaActual, "jquery.cookie.js", null);
     window.trelloAppKey = "optional";
     window.trelloIdList = "optional";
+
+    crearScript(bodyPaginaActual, "jiraService.js", null);
     crearScript(bodyPaginaActual, "trello_bookmarklet.js", null);
 })(document);
 

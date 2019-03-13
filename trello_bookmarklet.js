@@ -14,65 +14,65 @@
     IMPLEMENTADO: "10252"
   };
 
-  let ISSUE_TYPES_PARENTS = [];
   let SALTO_DE_LINEA = " \r\n\r\n \r\n\r\n ";
   let ITEM_LISTA = "- ";
+  let ISSUE_TYPES_UTILIZADOS = ["Incidencia de Test", "Tarea"];
 
   var $;
-  let jiraApi = {};
-
-
-  jiraApi.getIssue = function (issueId) {
-    return $.ajax({
-      url: "http://jira.conexia.com.ar:8080/rest/api/2/issue/" + issueId + "?fields=summary,%20comment,description,status,attachment,created",
-      beforedSend: agregarHeaders,
-      type: "GET"
-    });
-  }
-
-  jiraApi.getIssuesPadresDeProyecto = function (proyecto) {
-    return $.ajax({
-      url: "http://jira.conexia.com.ar:8080/rest/api/2/search?jql= project = " + proyecto + " AND issuetype in standardIssueTypes()",
-      beforedSend: agregarHeaders,
-      type: "GET"
-    });
-  }
-
-  jiraApi.getAllIssuesOfParents = function (proyecto, nombrePadres) {
-    return $.ajax({
-      url: "http://jira.conexia.com.ar:8080/rest/api/2/search?jql project = " + proyecto +
-        " AND parent in (" + convertirNombrePadres(nombrePadres) + ")",
-      beforedSend: agregarHeaders,
-      type: "GET"
-    });
-  }
-
-  function convertirNombrePadres(nombrePadres) {
-    return nombrePadres;
-  }
-
-  function agregarHeaders(request) {
-    request.setRequestHeader("Cookie", armarHeaderCookie());
-  }
-
-  function armarHeaderCookie() {
-    var ajs = $.cookie("AJS.conglomerate.cookie");
-    var jsession = $.cookie("JSESSIONID");
-    var token = $.cookie("atlassian.xsrf.token");
-    return ajs + "; " + jsession + "; " + token + ";";
-  }
 
   /* This is run after we've connected to Trello and selected a list */
-  var run = function (Trello, idList) {
-    var card = armarCard();
+  var run = function (idList, tipoSincronizacion) {
+    if (tipoSincronizacion === "masivo") {
+      var issuesPadres = elegirIssuesPadresDeProyecto();
+      var cards = armarCards(obtenerIssuesDePadres(issuesPadres));
+      $.each(cards, function (card) {
+        crearCardEnTrello(idList, card);
+      })
+    } else {
+      cargarCardIndividual(idList);
+    }
+  }
 
+  function elegirIssuesPadresDeProyecto() {
+    var nombreProyecto = $("#name-project").text();
+    var issuesPadres = [];
+    jiraService.getIssuesPadresDeProyecto(nombreProyecto).success(function (issuesPadres) {
+      $.each(issuesPadres.issues, function (issue) {
+        issuesPadres.push(issue.key);
+      })
+    });
+    return issuesPadres;
+  }
+
+  function obtenerIssuesDePadres(issuesPadres) {
+    var issues;
+    jiraService.getAllIssuesActivesOfParents($("#name-project").text(), issuesPadres, ISSUE_TYPES_UTILIZADOS)
+      .success(function (response) {
+        issues = response.issues;
+      })
+    return issues;
+  }
+
+  function armarCards(issues) {
+    var cards = [];
+    $.each(issues, function (issue) {
+      var card = {
+        description: armarDescripcionParaJira(issue),
+        name: armarNameJira(issue.key, issue.summary)
+      }
+      cards.push(card);
+    })
+    return cards;
+  }
+
+  function cargarCardIndividual(idList) {
+    var card = armarCard();
     // Create the card
     if (card.name) {
       if (card.esJira) {
-        jiraApi.getIssue($("#key-val").prop('rel')).success(function (response) {
+        jiraService.getIssue($("#key-val").prop('rel')).success(function (response) {
           if (esIssueValido(response)) {
             card.description = armarDescripcionParaJira(response);
-            card.urlSource = response.self;
             crearCardEnTrello(idList, card);
           } else {
             alert("No se puede agregar, ya que el issue esta cerrado");
@@ -118,7 +118,7 @@
     } else if ($("#jira").length) {
 
       // We're looking at a 5.1+ JIRA case
-      name = $("#key-val").text() + ": " + $("#summary-val").text();
+      name = armarNameJira($("#key-val").text(), $("#summary-val").text());
       esJira = true;
     } else if ($("#show_issue").length) {
 
@@ -196,55 +196,16 @@
     };
   }
 
+  function armarNameJira(key, summary) {
+    return key + ": " + summary;
+  }
+
   function crearCardEnTrello(idList, card) {
     Trello.post("lists/" + idList + "/cards", {
       name: card.name,
       desc: card.description
     }, function (card) {
-      // Display a little notification in the upper-left corner with a link to the card
-      // that was just created
-      var $cardLink = $("<a>")
-        .attr({
-          href: card.url,
-          target: "card"
-        })
-        .text("Created Trello Card: " + card.name);
-      var $cardLinkBox = $('<div>')
-        .css({
-          position: "absolute",
-          left: 0,
-          top: 0,
-          padding: "4px",
-          border: "1px solid #000",
-          background: "#fff",
-          "z-index": 1e3
-        })
-        .append($cardLink)
-        .appendTo("body");
-
-      if (!optAskValue) {
-        $("<a>").attr('href', '#')
-          .css({
-            color: '#888',
-            display: 'block',
-            'margin-top': '7px',
-            'font-size': '0.8em'
-          })
-          .text('Reset default board')
-          .click(function () {
-            store(optAsk, 1);
-            $(this).text('OK, done')
-              .css({
-                color: 'green',
-                'text-decoration': 'none'
-              });
-          })
-          .appendTo($cardLinkBox);
-      }
-
-      setTimeout(function () {
-        $cardLinkBox.fadeOut(3000);
-      }, 5000)
+      alert("Carga realizada");
       recargarPagina();
     })
   }
@@ -431,7 +392,7 @@
       });
     },
     // Get the list to add cards to, either from local storage or by prompting the user
-    function (next) {
+    function elegirTableroYColumnaDeTrello(next) {
       var idList = store(idListName) || window[idListName];
       if (!optAskValue && idList && idList.length == 24) {
         next(idList);
@@ -440,7 +401,6 @@
           fields: "name"
         }, function (boards) {
           $prompt = overlayPrompt('Which list should cards be sent to?<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
-
             // signal: make sure that user didn't click the background layer to cancel this operation
             if (signal !== 0) {
               idList = $prompt.find("input[name=idList]:checked").attr("id");
@@ -458,7 +418,8 @@
                 var list_id = list.id;
                 $("<label>").text(' ' + board.name + " : " + list.name).attr("for", list_id)
                   .appendTo($div)
-                  .prepend($("<input type='radio'" + (list_id == idList ? ' checked' : '') + ">").attr("id", list_id).attr("name", "idList"));
+                  .prepend($("<input type='radio'" + (list_id == idList ? ' checked' : '') + ">")
+                    .attr("id", list_id).attr("name", "idList"));
               });
             })
           });
@@ -474,9 +435,32 @@
       if (idList) {
         store(idListName, idList);
         store(optAsk, optAskValue);
-        next(Trello, idList);
+        next(idList, next);
       }
     },
+    function elegirTipoSincronizacion(idList, next) {
+      var tipoSincronizacion;
+      $prompt = overlayPrompt('Elegir tipo de carga<hr><div class="tipo-carga" style="overflow-y:scroll;max-height: 300px;"></div>', false,
+        function (signal) {
+          if (signal !== 0) {
+            tipoSincronizacion = $prompt.find("input[name=idList]:checked").attr("id");
+            next(idList, tipoSincronizacion);
+          }
+        });
+
+      $("<label>").text('Masivo')
+        .attr("for", 'masivo')
+        .appendTo($prompt)
+        .prepend($("<input type='radio'>")
+          .attr("id", "masivo").attr("name", "tipoCarga"));
+
+      $("<label>").text('Individual')
+        .attr("for", "individual")
+        .appendTo($prompt)
+        .prepend($("<input type='radio'>")
+          .attr("id", "individual").attr("name", "tipoCarga"));
+    },
+
     // Run the user portion
     run
   ]);
