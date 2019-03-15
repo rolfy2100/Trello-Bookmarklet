@@ -16,7 +16,7 @@
 
   let SALTO_DE_LINEA = " \r\n\r\n \r\n\r\n ";
   let ITEM_LISTA = "- ";
-  let ISSUE_TYPES_UTILIZADOS = ["Incidencia de Test", "Tarea"];
+  let ISSUE_TYPES_UTILIZADOS = ["Incidente de Test", "Tarea"];
 
   var $;
 
@@ -34,13 +34,33 @@
   }
 
   function elegirIssuesPadresDeProyecto() {
-    var nombreProyecto = $("#name-project").text();
+    var nombreProyecto = $("#project-name-val").text();
     var issuesPadres = [];
     jiraService.getIssuesPadresDeProyecto(nombreProyecto).success(function (issuesPadres) {
-      $.each(issuesPadres.issues, function (issue) {
+      $prompt = overlayPrompt('Elegi cuales issues quieres sincronizar<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
+        // signal: make sure that user didn't click the background layer to cancel this operation
+        if (signal !== 0) {
+          idList = $prompt.find("input[name=idList]:checked").attr("id");
+          optAskValue = $prompt.find("input[name=" + optAsk + "]").is(':checked') ? 1 : 0;
+        }
+      });
+      $board = $("<div>").appendTo($prompt.find(".boards"))
+      $.each(issuesPadres.issues, function (ix, issue) {
+            var $div = $("<div>").appendTo($board);
+            $("<label>").text(issue.key).attr("for", issue.key)
+              .appendTo($div)
+              .prepend($("<input type='checkbox'>")
+                .attr("id", issue.key)
+                .attr("name", "issuesPadres"));
+      });
+
+      
+      $.each($prompt.find("input[name=issuesPadres]:checked"), function (issue) {
         issuesPadres.push(issue.key);
       })
     });
+
+     
     return issuesPadres;
   }
 
@@ -443,7 +463,7 @@
       $prompt = overlayPrompt('Elegir tipo de carga<hr><div class="tipo-carga" style="overflow-y:scroll;max-height: 300px;"></div>', false,
         function (signal) {
           if (signal !== 0) {
-            tipoSincronizacion = $prompt.find("input[name=idList]:checked").attr("id");
+            tipoSincronizacion = $prompt.find("input[type=radio]:checked").attr("id");
             next(idList, tipoSincronizacion);
           }
         });
