@@ -17,60 +17,23 @@
   let SALTO_DE_LINEA = " \r\n\r\n \r\n\r\n ";
   let ITEM_LISTA = "- ";
   let ISSUE_TYPES_UTILIZADOS = ["Incidente de Test", "Tarea"];
-
+  let tipoSincronizacion;
   var $;
 
   /* This is run after we've connected to Trello and selected a list */
-  var run = function (idList, tipoSincronizacion) {
+  var run = function (idList, issuesPadres) {
     if (tipoSincronizacion === "masivo") {
-      var issuesPadres = elegirIssuesPadresDeProyecto();
-      var cards = armarCards(obtenerIssuesDePadres(issuesPadres));
-      $.each(cards, function (card) {
-        crearCardEnTrello(idList, card);
-      })
+      jiraService
+        .getAllIssuesActivesOfParents($("#name-project").text(), issuesPadres, ISSUE_TYPES_UTILIZADOS)
+        .success(function (response) {
+          var cards = armarCards(obtenerIssuesDePadres(response.issues));
+          $.each(cards, function (card) {
+            crearCardEnTrello(idList, card);
+          })
+        })
     } else {
       cargarCardIndividual(idList);
     }
-  }
-
-  function elegirIssuesPadresDeProyecto() {
-    var nombreProyecto = $("#project-name-val").text();
-    var issuesPadres = [];
-    jiraService.getIssuesPadresDeProyecto(nombreProyecto).success(function (issuesPadres) {
-      $prompt = overlayPrompt('Elegi cuales issues quieres sincronizar<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
-        // signal: make sure that user didn't click the background layer to cancel this operation
-        if (signal !== 0) {
-          idList = $prompt.find("input[name=idList]:checked").attr("id");
-          optAskValue = $prompt.find("input[name=" + optAsk + "]").is(':checked') ? 1 : 0;
-        }
-      });
-      $board = $("<div>").appendTo($prompt.find(".boards"))
-      $.each(issuesPadres.issues, function (ix, issue) {
-            var $div = $("<div>").appendTo($board);
-            $("<label>").text(issue.key).attr("for", issue.key)
-              .appendTo($div)
-              .prepend($("<input type='checkbox'>")
-                .attr("id", issue.key)
-                .attr("name", "issuesPadres"));
-      });
-
-      
-      $.each($prompt.find("input[name=issuesPadres]:checked"), function (issue) {
-        issuesPadres.push(issue.key);
-      })
-    });
-
-     
-    return issuesPadres;
-  }
-
-  function obtenerIssuesDePadres(issuesPadres) {
-    var issues;
-    jiraService.getAllIssuesActivesOfParents($("#name-project").text(), issuesPadres, ISSUE_TYPES_UTILIZADOS)
-      .success(function (response) {
-        issues = response.issues;
-      })
-    return issues;
   }
 
   function armarCards(issues) {
@@ -459,7 +422,7 @@
       }
     },
     function elegirTipoSincronizacion(idList, next) {
-      var tipoSincronizacion;
+      tipoSincronizacion;
       $prompt = overlayPrompt('Elegir tipo de carga<hr><div class="tipo-carga" style="overflow-y:scroll;max-height: 300px;"></div>', false,
         function (signal) {
           if (signal !== 0) {
@@ -480,8 +443,42 @@
         .prepend($("<input type='radio'>")
           .attr("id", "individual").attr("name", "tipoCarga"));
     },
+    function elegirIssuesPadres(idlist, next) {
+      var issuesPadres = [];
+      if (tipoSincronizacion === "masivo") {
+        var nombreProyecto = $("#project-name-val").text();
+        jiraService.getIssuesPadresDeProyecto(nombreProyecto).success(function (issuesPadres) {
+          $prompt = overlayPrompt('Elegi cuales issues quieres sincronizar<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
+            // signal: make sure that user didn't click the background layer to cancel this operation
+            if (signal !== 0) {
+              idList = $prompt.find("input[name=idList]:checked").attr("id");
+              optAskValue = $prompt.find("input[name=" + optAsk + "]").is(':checked') ? 1 : 0;
+            }
+          });
+        });
 
+        $board = $("<div>").appendTo($prompt.find(".boards"))
+        $.each(issuesPadres.issues, function (ix, issue) {
+          var $div = $("<div>").appendTo($board);
+          $("<label>").text(issue.key).attr("for", issue.key)
+            .appendTo($div)
+            .prepend($("<input type='checkbox'>")
+              .attr("id", issue.key)
+              .attr("name", "issuesPadres"));
+        });
+
+
+        $.each($prompt.find("input[name=issuesPadres]:checked"), function (issue) {
+          issuesPadres.push(issue.key);
+        })
+      }
+      next(idlist, issuesPadres);
+    },
     // Run the user portion
     run
   ]);
+  return run;
 })(window);
+
+
+run();
