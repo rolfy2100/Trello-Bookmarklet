@@ -19,21 +19,222 @@
   let ISSUE_TYPES_UTILIZADOS = ["Incidente de Test", "Tarea"];
   let tipoSincronizacion;
   var $;
+  // The ids of values we keep in localStorage
+  var appKeyName = "trelloAppKey";
+  var idListName = "trelloIdList";
+  var optAsk = "askMeEveryTime";
+
+  // Run several asyncronous functions in order
+  var waterfall = function (fxs) {
+    var runNext = function () {
+      if (fxs.length) {
+        fxs.shift().apply(null, Array.prototype.slice.call(arguments).concat([runNext]))
+      }
+    }
+    runNext();
+  }
+
+  //option value
+  var optAskValue = parseInt(store(optAsk)) || 0;
+
+  waterfall([
+    // Get the user's App Key, either from local storage, or by prompting them to retrieve it
+    function (next) {
+      $ = window.jQuery;
+
+      var appKey = store(appKeyName) || window[appKeyName];
+      if (appKey && appKey.length == 32) {
+        next(appKey);
+      } else {
+        overlayPrompt("Please specify your Trello API Key (you'll only need to do this once per site)<br><br>You can get your API Key <a href='https://trello.com/1/appKey/generate' target='apikey'>here</a><br><br>", true, function (newAppKey) {
+          if (newAppKey) {
+            next(newAppKey);
+          }
+        })
+      }
+    },
+    // Load the Trello script
+    function (appKey, next) {
+      $.getScript("https://trello.com/1/client.js?key=" + appKey, next);
+    },
+    // Authorize our application
+    function (a, b, c, next) {
+      store(appKeyName, Trello.key())
+      Trello.authorize({
+        interactive: false,
+        success: next,
+        error: function () {
+          overlayPrompt("You need to authorize Trello", false, function () {
+            Trello.authorize({
+              type: "popup",
+              expiration: "never",
+              scope: {
+                read: true,
+                write: true
+              },
+              success: next
+            });
+          });
+        }
+      });
+    },
+    // Get the list to add cards to, either from local storage or by prompting the user
+    function elegirTableroYColumnaDeTrello(next) {
+      var boardSeleccionado = store(idListName) || window[idListName];
+      if (!optAskValue && boardSeleccionado && boardSeleccionado.length == 24) {
+        next(boardSeleccionado);
+      } else {
+        Trello.get("members/me/boards", {
+          fields: "name"
+        }, function (boards) {
+          $prompt = overlayPrompt('Which list should cards be sent to?<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
+            // signal: make sure that user didn't click the background layer to cancel this operation
+            if (signal !== 0) {
+              boardSeleccionado = {
+                idList: $prompt.find("input[name=idList]:checked").data("idList"),
+                idBoard: $prompt.find("input[name=idList]:checked").data("idBoard")
+              }
+              boardSeleccionado = $prompt.find("input[name=idList]:checked").attr("id");
+              optAskValue = $prompt.find("input[name=" + optAsk + "]").is(':checked') ? 1 : 0;
+              next(boardSeleccionado);
+            }
+          });
+
+          $.each(boards, function (ix, board) {
+            $board = $("<div>").appendTo($prompt.find(".boards"))
+
+            Trello.get("boards/" + board.id + "/lists", function (lists) {
+              $.each(lists, function (ix, list) {
+                var $div = $("<div>").appendTo($board);
+                var id_list = list.id;
+                $("<label>").text(' ' + board.name + " : " + list.name).attr("for", id_list)
+                  .appendTo($div)
+                  .prepend($("<input type='radio'" + (id_list == boardSeleccionado ? ' checked' : '') + ">")
+                    .attr("name", "idList").data("idBoard", board.id).data(("idList", id_list)));
+              });
+            })
+          });
+
+          var $opts = $('<div>').appendTo($prompt.find('.boards').append('<hr>'));
+          $(".boards").after($('<input type="checkbox"' + (optAskValue ? ' checked ' : ' ') + 'id="input_' + optAsk + '" name="' + optAsk + '" value="1">'));
+          $(".boards").after($('<label>').text(' Ask me every time').attr('for', 'input_' + optAsk));
+        });
+      }
+    },
+    // Store the idList for later
+    function (boardSeleccionado, next) {
+      if (boardSeleccionado) {
+        store(idListName, boardSeleccionado);
+        store(optAsk, optAskValue);
+        next(boardSeleccionado, next);
+      }
+    },
+    function elegirTipoSincronizacion(boardSeleccionado, next) {
+      tipoSincronizacion;
+      $prompt = overlayPrompt('Elegir tipo de carga<hr><div class="tipo-carga" style="overflow-y:scroll;max-height: 300px;"></div>', false,
+        function (signal) {
+          if (signal !== 0) {
+            tipoSincronizacion = $prompt.find("input[type=radio]:checked").attr("id");
+            next(boardSeleccionado, tipoSincronizacion);
+          }
+        });
+
+      $("<label>").text('Masivo')
+        .attr("for", 'masivo')
+        .appendTo($prompt)
+        .prepend($("<input type='radio'>")
+          .attr("id", "masivo").attr("name", "tipoCarga"));
+
+      $("<label>").text('Individual')
+        .attr("for", "individual")
+        .appendTo($prompt)
+        .prepend($("<input type='radio'>")
+          .attr("id", "individual").attr("name", "tipoCarga"));
+    },
+    function elegirIssuesPadres(boardSeleccionado, next) {
+      var issuesPadres = [];
+      if (tipoSincronizacion === "masivo") {
+        var nombreProyecto = $("#project-name-val").text();
+        jiraService.getIssuesPadresDeProyecto(nombreProyecto).success(function (issuesPadres) {
+          $prompt = overlayPrompt('Elegi cuales issues quieres sincronizar<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
+            // signal: make sure that user didn't click the background layer to cancel this operation
+            if (signal !== 0) {
+              idList = $prompt.find("input[name=idList]:checked").attr("id");
+              optAskValue = $prompt.find("input[name=" + optAsk + "]").is(':checked') ? 1 : 0;
+            }
+          });
+        });
+
+        $board = $("<div>").appendTo($prompt.find(".boards"))
+        $.each(issuesPadres.issues, function (ix, issue) {
+          var $div = $("<div>").appendTo($board);
+          $("<label>").text(issue.key).attr("for", issue.key)
+            .appendTo($div)
+            .prepend($("<input type='checkbox'>")
+              .attr("id", issue.key)
+              .attr("name", "issuesPadres"));
+        });
+
+
+        $.each($prompt.find("input[name=issuesPadres]:checked"), function (issue) {
+          issuesPadres.push(issue.key);
+        })
+      }
+      next(boardSeleccionado, issuesPadres);
+    },
+    // Run the user portion
+    run
+  ]);
+
+  var storage = window.localStorage;
+  if (!storage) {
+    return;
+  }
+
+  // Store/retrieve a value from local storage
+  var store = function (key, value) {
+    if (arguments.length == 2) {
+      return (storage[key] = value);
+    } else {
+      return storage[key];
+    }
+  };
 
   /* This is run after we've connected to Trello and selected a list */
-  var run = function (idList, issuesPadres) {
+  var run = function (boardSeleccionado, issuesPadres) {
     if (tipoSincronizacion === "masivo") {
-      jiraService
-        .getAllIssuesActivesOfParents($("#name-project").text(), issuesPadres, ISSUE_TYPES_UTILIZADOS)
-        .success(function (response) {
-          var cards = armarCards(obtenerIssuesDePadres(response.issues));
-          $.each(cards, function (card) {
-            crearCardEnTrello(idList, card);
+      Trello.get("boards/" + boardSeleccionado.idBoard + "/cards", function (cardsExistentes) {
+        jiraService
+          .getAllIssuesActivesOfParents($("#name-project").text(), issuesPadres, ISSUE_TYPES_UTILIZADOS)
+          .success(function (response) {
+            var issuesACrear = obtenerIssuesNoExistentesEnTrello(response.issues, cardsExistentes);
+            var cards = armarCards(issuesACrear);
+            $.each(cards, function (card) {
+              crearCardEnTrello(boardSeleccionado.idList, card);
+            })
           })
-        })
+      })
     } else {
-      cargarCardIndividual(idList);
+      cargarCardIndividual(boardSeleccionado.idList);
     }
+  }
+
+  function obtenerIssuesNoExistentesEnTrello(issues, cardsExistentes) {
+    var issuesNoExistentesEnTrello = [];
+    $.each(issues, function (issue) {
+      if (!esCardExistente(issue, cardsExistentes)) {
+        issuesNoExistentesEnTrello.push(issue);
+      }
+    });
+  }
+
+  function esCardExistente(issue, cardsExistentes) {
+    var esCardExistente = false;
+    $.each(cardsExistentes, function (card) {
+      var keyCard = card.description.substr(0, card.description.indexOf(":"));
+      esCardExistente = keyCard === issue.key;
+    });
+    return esCardExistente;
   }
 
   function armarCards(issues) {
@@ -44,8 +245,33 @@
         name: armarNameJira(issue.key, issue.summary)
       }
       cards.push(card);
-    })
+    });
     return cards;
+  }
+
+  function armarDescripcionParaJira(issue) {
+    let adjuntos = armarRecursosAdjuntos(issue);
+    return issue.fields.description + " " + adjuntos;
+  }
+
+  function armarRecursosAdjuntos(issue) {
+    var tituloSeccionAdjunto = SALTO_DE_LINEA + "*Adjuntos*" + SALTO_DE_LINEA;
+    var fechaCreacionIssue = new Date(issue.fields.created);
+    var fechaCreacionAdjunto;
+    $.each(issue.fields.attachment, function (index, adjunto) {
+      fechaCreacionAdjunto = new Date(adjunto.created);
+      var esAdjuntoDeIssue = fechasConMismoDiaDeCreacion(fechaCreacionAdjunto, fechaCreacionIssue);
+      if (esAdjuntoDeIssue) {
+        tituloSeccionAdjunto = tituloSeccionAdjunto + ITEM_LISTA + adjunto.content + SALTO_DE_LINEA;
+      }
+    });
+    return tituloSeccionAdjunto;
+  }
+
+  function fechasConMismoDiaDeCreacion(fechaCreacionAdjunto, fechaCreacionIssue) {
+    return fechaCreacionAdjunto.getFullYear() === fechaCreacionIssue.getFullYear() &&
+      fechaCreacionAdjunto.getMonth() === fechaCreacionIssue.getMonth() &&
+      fechaCreacionAdjunto.getDate() === fechaCreacionIssue.getDate();
   }
 
   function cargarCardIndividual(idList) {
@@ -204,43 +430,9 @@
     return esIssueValido;
   }
 
-  function armarDescripcionParaJira(issue) {
-    let adjuntos = armarRecursosAdjuntos(issue);
-    return issue.fields.description + " " + adjuntos;
+  function recargarPagina() {
+    window.location = window.location.href;
   }
-
-  function armarRecursosAdjuntos(issue) {
-    var adjuntos = SALTO_DE_LINEA + "*Adjuntos*" + SALTO_DE_LINEA;
-    var fechaCreacionIssue = new Date(issue.fields.created);
-    var fechaCreacionAdjunto;
-    $.each(issue.fields.attachment, function (index, adjunto) {
-      fechaCreacionAdjunto = new Date(adjunto.created);
-      if (fechasConMismoDiaDeCreacion(fechaCreacionAdjunto, fechaCreacionIssue)) {
-        adjuntos = adjuntos + ITEM_LISTA + adjunto.content + SALTO_DE_LINEA;
-      }
-    });
-    return adjuntos;
-  }
-
-  function fechasConMismoDiaDeCreacion(fechaCreacionAdjunto, fechaCreacionIssue) {
-    return fechaCreacionAdjunto.getFullYear() === fechaCreacionIssue.getFullYear() &&
-      fechaCreacionAdjunto.getMonth() === fechaCreacionIssue.getMonth() &&
-      fechaCreacionAdjunto.getDate() === fechaCreacionIssue.getDate();
-  }
-
-  var storage = window.localStorage;
-  if (!storage) {
-    return;
-  }
-
-  // Store/retrieve a value from local storage
-  var store = function (key, value) {
-    if (arguments.length == 2) {
-      return (storage[key] = value);
-    } else {
-      return storage[key];
-    }
-  };
 
   // A fake "prompt" to get info from the user
   var overlayPrompt = function (html, hasInput, callback) {
@@ -312,173 +504,4 @@
 
     return $div;
   };
-
-  function recargarPagina() {
-    window.location = window.location.href;
-  }
-  // Run several asyncronous functions in order
-  var waterfall = function (fxs) {
-    var runNext = function () {
-      if (fxs.length) {
-        fxs.shift().apply(null, Array.prototype.slice.call(arguments).concat([runNext]))
-      }
-    }
-    runNext();
-  }
-
-  // The ids of values we keep in localStorage
-  var appKeyName = "trelloAppKey";
-  var idListName = "trelloIdList";
-  var optAsk = "askMeEveryTime";
-  //option value
-  var optAskValue = parseInt(store(optAsk)) || 0;
-
-  waterfall([
-    // Get the user's App Key, either from local storage, or by prompting them to retrieve it
-    function (next) {
-      $ = window.jQuery;
-
-      var appKey = store(appKeyName) || window[appKeyName];
-      if (appKey && appKey.length == 32) {
-        next(appKey);
-      } else {
-        overlayPrompt("Please specify your Trello API Key (you'll only need to do this once per site)<br><br>You can get your API Key <a href='https://trello.com/1/appKey/generate' target='apikey'>here</a><br><br>", true, function (newAppKey) {
-          if (newAppKey) {
-            next(newAppKey);
-          }
-        })
-      }
-    },
-    // Load the Trello script
-    function (appKey, next) {
-      $.getScript("https://trello.com/1/client.js?key=" + appKey, next);
-    },
-    // Authorize our application
-    function (a, b, c, next) {
-      store(appKeyName, Trello.key())
-      Trello.authorize({
-        interactive: false,
-        success: next,
-        error: function () {
-          overlayPrompt("You need to authorize Trello", false, function () {
-            Trello.authorize({
-              type: "popup",
-              expiration: "never",
-              scope: {
-                read: true,
-                write: true
-              },
-              success: next
-            });
-          });
-        }
-      });
-    },
-    // Get the list to add cards to, either from local storage or by prompting the user
-    function elegirTableroYColumnaDeTrello(next) {
-      var idList = store(idListName) || window[idListName];
-      if (!optAskValue && idList && idList.length == 24) {
-        next(idList);
-      } else {
-        Trello.get("members/me/boards", {
-          fields: "name"
-        }, function (boards) {
-          $prompt = overlayPrompt('Which list should cards be sent to?<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
-            // signal: make sure that user didn't click the background layer to cancel this operation
-            if (signal !== 0) {
-              idList = $prompt.find("input[name=idList]:checked").attr("id");
-              optAskValue = $prompt.find("input[name=" + optAsk + "]").is(':checked') ? 1 : 0;
-              next(idList);
-            }
-          });
-
-          $.each(boards, function (ix, board) {
-            $board = $("<div>").appendTo($prompt.find(".boards"))
-
-            Trello.get("boards/" + board.id + "/lists", function (lists) {
-              $.each(lists, function (ix, list) {
-                var $div = $("<div>").appendTo($board);
-                var list_id = list.id;
-                $("<label>").text(' ' + board.name + " : " + list.name).attr("for", list_id)
-                  .appendTo($div)
-                  .prepend($("<input type='radio'" + (list_id == idList ? ' checked' : '') + ">")
-                    .attr("id", list_id).attr("name", "idList"));
-              });
-            })
-          });
-
-          var $opts = $('<div>').appendTo($prompt.find('.boards').append('<hr>'));
-          $(".boards").after($('<input type="checkbox"' + (optAskValue ? ' checked ' : ' ') + 'id="input_' + optAsk + '" name="' + optAsk + '" value="1">'));
-          $(".boards").after($('<label>').text(' Ask me every time').attr('for', 'input_' + optAsk));
-        });
-      }
-    },
-    // Store the idList for later
-    function (idList, next) {
-      if (idList) {
-        store(idListName, idList);
-        store(optAsk, optAskValue);
-        next(idList, next);
-      }
-    },
-    function elegirTipoSincronizacion(idList, next) {
-      tipoSincronizacion;
-      $prompt = overlayPrompt('Elegir tipo de carga<hr><div class="tipo-carga" style="overflow-y:scroll;max-height: 300px;"></div>', false,
-        function (signal) {
-          if (signal !== 0) {
-            tipoSincronizacion = $prompt.find("input[type=radio]:checked").attr("id");
-            next(idList, tipoSincronizacion);
-          }
-        });
-
-      $("<label>").text('Masivo')
-        .attr("for", 'masivo')
-        .appendTo($prompt)
-        .prepend($("<input type='radio'>")
-          .attr("id", "masivo").attr("name", "tipoCarga"));
-
-      $("<label>").text('Individual')
-        .attr("for", "individual")
-        .appendTo($prompt)
-        .prepend($("<input type='radio'>")
-          .attr("id", "individual").attr("name", "tipoCarga"));
-    },
-    function elegirIssuesPadres(idlist, next) {
-      var issuesPadres = [];
-      if (tipoSincronizacion === "masivo") {
-        var nombreProyecto = $("#project-name-val").text();
-        jiraService.getIssuesPadresDeProyecto(nombreProyecto).success(function (issuesPadres) {
-          $prompt = overlayPrompt('Elegi cuales issues quieres sincronizar<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
-            // signal: make sure that user didn't click the background layer to cancel this operation
-            if (signal !== 0) {
-              idList = $prompt.find("input[name=idList]:checked").attr("id");
-              optAskValue = $prompt.find("input[name=" + optAsk + "]").is(':checked') ? 1 : 0;
-            }
-          });
-        });
-
-        $board = $("<div>").appendTo($prompt.find(".boards"))
-        $.each(issuesPadres.issues, function (ix, issue) {
-          var $div = $("<div>").appendTo($board);
-          $("<label>").text(issue.key).attr("for", issue.key)
-            .appendTo($div)
-            .prepend($("<input type='checkbox'>")
-              .attr("id", issue.key)
-              .attr("name", "issuesPadres"));
-        });
-
-
-        $.each($prompt.find("input[name=issuesPadres]:checked"), function (issue) {
-          issuesPadres.push(issue.key);
-        })
-      }
-      next(idlist, issuesPadres);
-    },
-    // Run the user portion
-    run
-  ]);
-  return run;
 })(window);
-
-
-run();
