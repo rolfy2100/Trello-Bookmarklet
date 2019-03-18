@@ -18,11 +18,12 @@ var jiraService = (function (window) {
         });
     }
 
-    jiraApi.getAllIssuesActivesOfParents = function (proyecto, nombrePadres, tiposDeIssues) {
+    jiraApi.getAllIssuesActivesOfParents = function (proyecto, nombrePadres, tiposDeIssues, statusIssues) {
         return $.ajax({
             url: "http://jira.conexia.com.ar:8080/rest/api/2/search?jql=project = " + proyecto +
                 " AND parent in (" + concatenarConComas(nombrePadres) + ")" +
-                " AND resolution is empty AND issuetype IN (" + concatenarConComas(tiposDeIssues) + ")",
+                " AND status NOT IN (" + convertirIssuesStates(statusIssues)+ ")" +
+                " AND issuetype IN (" + concatenarConComas(tiposDeIssues) + ")",
             beforedSend: agregarHeaders,
             type: "GET"
         });
@@ -39,15 +40,25 @@ var jiraService = (function (window) {
         return ajs + "; " + jsession + "; " + token + ";";
     }
 
+
+    function convertirIssuesStates(issuesStates) {
+        var issueStatesIds = [];
+        $.each(issuesStates, function (index, issueState) {
+            issueStatesIds.push(issueState.id);
+        })
+        return concatenarConComas(issueStatesIds);
+    }
+
     function concatenarConComas(listaAConcatenar) {
         let listaConcatenada = "";
         $.each(listaAConcatenar, function (index, itemAConcatenar) {
             listaConcatenada = listaConcatenada + "'" + itemAConcatenar + "'";
-            if(listaAConcatenar[index + 1]){
+            if (listaAConcatenar[index + 1]) {
                 listaConcatenada = listaConcatenada + ",";
             }
         });
         return listaConcatenada;
     }
+
     return jiraApi;
 })(window);

@@ -1,18 +1,20 @@
 (function (window) {
 
-  let ISSUE_STATES_CERRADOS = {
-    CERRADO: "6",
-    RESUELTO: "10024",
-    CANCELADA_POR_QA: "10027",
-    FINALIZADA: "10028",
-    RECHAZADA: "10029",
-    CERRADO_SIN_CORREGIR: "10035",
-    RESUELTA: "10045",
-    CANCELADO: "10047",
-    FINALIZADO: "10049",
-    CANCELADA: "10053",
-    IMPLEMENTADO: "10252"
-  };
+  let ISSUE_STATES_CERRADOS = [
+    {estado: "CERRADO", id: "6"},
+    {estado: "RESUELTO", id: "10024"},
+    {estado: "CANCELADA_POR_QA", id: "10027"},
+    {estado: "FINALIZADA", id: "10028"},
+    {estado: "RECHAZADA", id: "10029"},
+    {estado: "CERRADO_SIN_CORREGIR", id: "10035"},
+    {estado: "RESUELTA", id: "10045"},
+    {estado: "CANCELADO", id: "10047"},
+    {estado: "FINALIZADO", id: "10049"},
+    {estado: "CANCELADA", id: "10053"},
+    {estado: "IMPLEMENTADO", id: "10252"}
+  ];
+
+  
 
   let SALTO_DE_LINEA = " \r\n\r\n \r\n\r\n ";
   let ITEM_LISTA = "- ";
@@ -59,13 +61,16 @@
 
       $.when(Trello.get("boards/" + boardSeleccionado.idBoard + "/cards"),
         jiraService
-        .getAllIssuesActivesOfParents($("#project-name-val").text(), issuesPadres, ISSUE_TYPES_UTILIZADOS)
+        .getAllIssuesActivesOfParents($("#project-name-val").text(),
+          issuesPadres,
+          ISSUE_TYPES_UTILIZADOS,
+          ISSUE_STATES_CERRADOS)
       ).done(function (cardsExistentes, issues) {
-        var promises = [];
+        var peticionesObtenerIssuesPorId = [];
         $.each(issues[0].issues, function (index, issue) {
-          promises.push(jiraService.getIssue(issue.id));
+          peticionesObtenerIssuesPorId.push(jiraService.getIssue(issue.id));
         })
-        $.when(...promises).then(function () {
+        $.when(...peticionesObtenerIssuesPorId).then(function () {
           var issues = obtenerIssuesDeRespuestaPromise(arguments);
           var issuesACrear = obtenerIssuesNoExistentesEnTrello(issues, cardsExistentes[0]);
           var cards = armarCards(issuesACrear);
