@@ -19,10 +19,7 @@
   let ISSUE_TYPES_UTILIZADOS = ["Incidente de Test", "Tarea"];
   let tipoSincronizacion;
   var $;
-  // The ids of values we keep in localStorage
-  var appKeyName = "trelloAppKey";
-  var idListName = "trelloIdList";
-  var optAsk = "askMeEveryTime";
+
 
   // Run several asyncronous functions in order
   var waterfall = function (fxs) {
@@ -34,8 +31,62 @@
     runNext();
   }
 
+  var storage = window.localStorage;
+  if (!storage) {
+    return;
+  }
+
+  // Store/retrieve a value from local storage
+  var store = function (key, value) {
+    if (arguments.length == 2) {
+      return (storage[key] = value);
+    } else {
+      return storage[key];
+    }
+  };
+
+  // The ids of values we keep in localStorage
+  var appKeyName = "trelloAppKey";
+  var idListName = "trelloIdList";
+  var optAsk = "askMeEveryTime";
   //option value
   var optAskValue = parseInt(store(optAsk)) || 0;
+
+
+  /* This is run after we've connected to Trello and selected a list */
+  var run = function (boardSeleccionado, issuesPadres) {
+    if (tipoSincronizacion === "masivo") {
+
+      $.when(Trello.get("boards/" + boardSeleccionado.idBoard + "/cards"),
+        jiraService
+        .getAllIssuesActivesOfParents($("#project-name-val").text(), issuesPadres, ISSUE_TYPES_UTILIZADOS)
+      ).done(function (cardsExistentes, issues) {
+        var promises = [];
+        $.each(issues[0].issues, function (index, issue) {
+          promises.push(jiraService.getIssue(issue.id));
+        })
+        $.when(...promises).then(function () {
+          var issues = obtenerIssuesDeRespuestaPromise(arguments);
+          var issuesACrear = obtenerIssuesNoExistentesEnTrello(issues, cardsExistentes[0]);
+          var cards = armarCards(issuesACrear);
+          $.each(cards, function (index, card) {
+            crearCardEnTrello(boardSeleccionado.idList, card);
+          });
+        });
+      })
+
+    } else {
+      cargarCardIndividual(boardSeleccionado.idList);
+    }
+  }
+
+  function obtenerIssuesDeRespuestaPromise(respuestPromise) {
+    var issues = [];
+    $.each(respuestPromise, function (index, promise) {
+      issues.push(promise[0]);
+    })
+    return issues;
+  }
 
   waterfall([
     // Get the user's App Key, either from local storage, or by prompting them to retrieve it
@@ -91,10 +142,9 @@
             // signal: make sure that user didn't click the background layer to cancel this operation
             if (signal !== 0) {
               boardSeleccionado = {
-                idList: $prompt.find("input[name=idList]:checked").data("idList"),
-                idBoard: $prompt.find("input[name=idList]:checked").data("idBoard")
-              }
-              boardSeleccionado = $prompt.find("input[name=idList]:checked").attr("id");
+                idList: $prompt.find("input[name=idList]:checked").attr("data-idList"),
+                idBoard: $prompt.find("input[name=idList]:checked").attr("data-idBoard")
+              };
               optAskValue = $prompt.find("input[name=" + optAsk + "]").is(':checked') ? 1 : 0;
               next(boardSeleccionado);
             }
@@ -107,10 +157,13 @@
               $.each(lists, function (ix, list) {
                 var $div = $("<div>").appendTo($board);
                 var id_list = list.id;
+                var $inputRadio = $("<input type='radio'" + (id_list == boardSeleccionado ? ' checked' : '') + ">");
+                $inputRadio.attr("name", "idList");
+                $inputRadio.attr("data-idBoard", board.id);
+                $inputRadio.attr("data-idList", id_list);
                 $("<label>").text(' ' + board.name + " : " + list.name).attr("for", id_list)
                   .appendTo($div)
-                  .prepend($("<input type='radio'" + (id_list == boardSeleccionado ? ' checked' : '') + ">")
-                    .attr("name", "idList").data("idBoard", board.id).data(("idList", id_list)));
+                  .prepend($inputRadio);
               });
             })
           });
@@ -151,98 +204,67 @@
         .prepend($("<input type='radio'>")
           .attr("id", "individual").attr("name", "tipoCarga"));
     },
-    function elegirIssuesPadres(boardSeleccionado, next) {
+    function elegirIssuesPadres(boardSeleccionado, tipoSincronizacion, next) {
       var issuesPadres = [];
       if (tipoSincronizacion === "masivo") {
         var nombreProyecto = $("#project-name-val").text();
-        jiraService.getIssuesPadresDeProyecto(nombreProyecto).success(function (issuesPadres) {
-          $prompt = overlayPrompt('Elegi cuales issues quieres sincronizar<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
-            // signal: make sure that user didn't click the background layer to cancel this operation
-            if (signal !== 0) {
-              idList = $prompt.find("input[name=idList]:checked").attr("id");
-              optAskValue = $prompt.find("input[name=" + optAsk + "]").is(':checked') ? 1 : 0;
-            }
+        $prompt = overlayPrompt('Elegi cuales issues quieres sincronizar<hr><div class="boards" style="overflow-y:scroll;max-height: 300px;"></div>', false, function (signal) {
+          // signal: make sure that user didn't click the background layer to cancel this operation
+          if (signal !== 0) {
+            $.each($prompt.find("input[name=issuesPadres]:checked"), function (index, issue) {
+              issuesPadres.push(issue.id);
+            })
+            next(boardSeleccionado, issuesPadres, next);
+          }
+        });
+        jiraService.getIssuesPadresDeProyecto(nombreProyecto).success(function (response) {
+
+          $board = $("<div>").appendTo($prompt.find(".boards"))
+          $.each(response.issues, function (ix, issue) {
+            var $div = $("<div>").appendTo($board);
+            $("<label>").text(issue.key).attr("for", issue.key)
+              .appendTo($div)
+              .prepend($("<input type='checkbox'>")
+                .attr("id", issue.key)
+                .attr("name", "issuesPadres"));
           });
         });
-
-        $board = $("<div>").appendTo($prompt.find(".boards"))
-        $.each(issuesPadres.issues, function (ix, issue) {
-          var $div = $("<div>").appendTo($board);
-          $("<label>").text(issue.key).attr("for", issue.key)
-            .appendTo($div)
-            .prepend($("<input type='checkbox'>")
-              .attr("id", issue.key)
-              .attr("name", "issuesPadres"));
-        });
-
-
-        $.each($prompt.find("input[name=issuesPadres]:checked"), function (issue) {
-          issuesPadres.push(issue.key);
-        })
+      } else {
+        next(boardSeleccionado, issuesPadres);
       }
-      next(boardSeleccionado, issuesPadres);
     },
     // Run the user portion
     run
   ]);
 
-  var storage = window.localStorage;
-  if (!storage) {
-    return;
-  }
-
-  // Store/retrieve a value from local storage
-  var store = function (key, value) {
-    if (arguments.length == 2) {
-      return (storage[key] = value);
-    } else {
-      return storage[key];
-    }
-  };
-
-  /* This is run after we've connected to Trello and selected a list */
-  var run = function (boardSeleccionado, issuesPadres) {
-    if (tipoSincronizacion === "masivo") {
-      Trello.get("boards/" + boardSeleccionado.idBoard + "/cards", function (cardsExistentes) {
-        jiraService
-          .getAllIssuesActivesOfParents($("#name-project").text(), issuesPadres, ISSUE_TYPES_UTILIZADOS)
-          .success(function (response) {
-            var issuesACrear = obtenerIssuesNoExistentesEnTrello(response.issues, cardsExistentes);
-            var cards = armarCards(issuesACrear);
-            $.each(cards, function (card) {
-              crearCardEnTrello(boardSeleccionado.idList, card);
-            })
-          })
-      })
-    } else {
-      cargarCardIndividual(boardSeleccionado.idList);
-    }
-  }
-
   function obtenerIssuesNoExistentesEnTrello(issues, cardsExistentes) {
     var issuesNoExistentesEnTrello = [];
-    $.each(issues, function (issue) {
+    $.each(issues, function (index, issue) {
       if (!esCardExistente(issue, cardsExistentes)) {
         issuesNoExistentesEnTrello.push(issue);
       }
     });
+    return issuesNoExistentesEnTrello;
   }
 
   function esCardExistente(issue, cardsExistentes) {
     var esCardExistente = false;
-    $.each(cardsExistentes, function (card) {
-      var keyCard = card.description.substr(0, card.description.indexOf(":"));
-      esCardExistente = keyCard === issue.key;
+    $.each(cardsExistentes, function (index, card) {
+      var keyCard = card.name.substr(0, card.name.indexOf(":"));
+      if (keyCard === issue.key) {
+        esCardExistente = true;
+        return;
+      };
     });
     return esCardExistente;
   }
 
   function armarCards(issues) {
     var cards = [];
-    $.each(issues, function (issue) {
+    $.each(issues, function (index, issue) {
       var card = {
         description: armarDescripcionParaJira(issue),
-        name: armarNameJira(issue.key, issue.summary)
+        name: armarNameJira(issue.key, issue.fields.summary)
       }
       cards.push(card);
     });

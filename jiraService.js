@@ -22,7 +22,7 @@ var jiraService = (function (window) {
         return $.ajax({
             url: "http://jira.conexia.com.ar:8080/rest/api/2/search?jql=project = " + proyecto +
                 " AND parent in (" + concatenarConComas(nombrePadres) + ")" +
-                " AND resolution is empty AND issuetype in (" + concatenarConComas(tiposDeIssues) + ")",
+                " AND resolution is empty AND issuetype IN (" + concatenarConComas(tiposDeIssues) + ")",
             beforedSend: agregarHeaders,
             type: "GET"
         });
@@ -42,7 +42,10 @@ var jiraService = (function (window) {
     function concatenarConComas(listaAConcatenar) {
         let listaConcatenada = "";
         $.each(listaAConcatenar, function (index, itemAConcatenar) {
-            listaConcatenada = listaConcatenada + itemAConcatenar + ",";
+            listaConcatenada = listaConcatenada + "'" + itemAConcatenar + "'";
+            if(listaAConcatenar[index + 1]){
+                listaConcatenada = listaConcatenada + ",";
+            }
         });
         return listaConcatenada;
     }
